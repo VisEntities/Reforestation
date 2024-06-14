@@ -7,7 +7,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.0.0")]
+    [Info("Reforestation", "VisEntities", "1.1.0")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -19,6 +19,7 @@ namespace Oxide.Plugins
         private const int LAYER_TREE = Layers.Mask.Tree;
         private const int LAYER_WORLD = Layers.Mask.World;
         private const int LAYER_TERRAIN = Layers.Mask.Terrain;
+        private const int LAYER_CONSTRUCTION = Layers.Mask.Construction;
 
         private Dictionary<ulong, Timer> _treePlantingTimers = new Dictionary<ulong, Timer>();
 
@@ -81,7 +82,10 @@ namespace Oxide.Plugins
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_d.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_a.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_c.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_d.prefab"
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_d.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_a.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_b.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_d.prefab",
                 }
             },
             {
@@ -91,7 +95,12 @@ namespace Oxide.Plugins
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_b.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_c.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_d.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_e.prefab"
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_e.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_a.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_b.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_c.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_d.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_e.prefab",
                 }
             },
             {
@@ -263,6 +272,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Allowable Distance From Nearby Trees")]
             public float AllowableDistanceFromNearbyTrees { get; set; }
+
+            [JsonProperty("Building Check Radius")]
+            public float BuildingCheckRadius { get; set; }
         }
 
         protected override void LoadConfig()
@@ -295,6 +307,11 @@ namespace Oxide.Plugins
             if (string.Compare(_config.Version, "1.0.0") < 0)
                 _config = defaultConfig;
 
+            if (string.Compare(_config.Version, "1.1.0") < 0)
+            {
+                _config.BuildingCheckRadius = defaultConfig.BuildingCheckRadius;
+            }
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -310,7 +327,8 @@ namespace Oxide.Plugins
                 ChanceToPlantEachTree = 50,
                 SearchRadiusForPlantingSite = 15f,
                 MaximumSearchAttemptsForPlantingSite = 10,
-                AllowableDistanceFromNearbyTrees = 2f
+                AllowableDistanceFromNearbyTrees = 2f,
+                BuildingCheckRadius = 5f
             };
         }
 
@@ -395,7 +413,8 @@ namespace Oxide.Plugins
 
                 if (!TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
                     && TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_TERRAIN | LAYER_WORLD)
-                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREE))
+                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREE)
+                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_CONSTRUCTION))
                 {
                     position = raycastHit.point;
                     return true;
