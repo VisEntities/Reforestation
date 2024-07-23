@@ -1,4 +1,10 @@
-﻿using Facepunch;
+﻿/*
+ * Copyright (C) 2024 Game4Freak.io
+ * This mod is provided under the Game4Freak EULA.
+ * Full legal terms can be found at https://game4freak.io/eula/
+ */
+
+using Facepunch;
 using Newtonsoft.Json;
 using Rust;
 using System.Collections.Generic;
@@ -7,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.1.0")]
+    [Info("Reforestation", "VisEntities", "1.2.0")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -275,6 +281,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Building Check Radius")]
             public float BuildingCheckRadius { get; set; }
+
+            [JsonProperty("Excluded Biomes")]
+            public List<string> ExcludedBiomes { get; set; }
         }
 
         protected override void LoadConfig()
@@ -312,6 +321,11 @@ namespace Oxide.Plugins
                 _config.BuildingCheckRadius = defaultConfig.BuildingCheckRadius;
             }
 
+            if (string.Compare(_config.Version, "1.2.0") < 0)
+            {
+                _config.ExcludedBiomes = defaultConfig.ExcludedBiomes;
+            }
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -328,7 +342,11 @@ namespace Oxide.Plugins
                 SearchRadiusForPlantingSite = 15f,
                 MaximumSearchAttemptsForPlantingSite = 10,
                 AllowableDistanceFromNearbyTrees = 2f,
-                BuildingCheckRadius = 5f
+                BuildingCheckRadius = 5f,
+                ExcludedBiomes = new List<string>
+                {
+                    "Arid"
+                }
             };
         }
 
@@ -377,6 +395,10 @@ namespace Oxide.Plugins
             ulong treeId = tree.net.ID.Value;
 
             if (treeType == TreeType.Unknown)
+                return;
+
+            string biome = GetBiome(treePosition);
+            if (_config.ExcludedBiomes.Contains(biome))
                 return;
 
             Timer spawnIn = timer.Once(_config.DelayBeforePlantingTreesSeconds, () =>
@@ -461,6 +483,28 @@ namespace Oxide.Plugins
         }
 
         #endregion Tree Type Identification and Prefab Selection
+
+        #region Biome Retrieval
+
+        private string GetBiome(Vector3 position)
+        {
+            TerrainBiome.Enum biome = (TerrainBiome.Enum)TerrainMeta.BiomeMap.GetBiomeMaxType(position);
+            switch (biome)
+            {
+                case TerrainBiome.Enum.Arctic:
+                    return "Arctic";
+                case TerrainBiome.Enum.Tundra:
+                    return "Tundra";
+                case TerrainBiome.Enum.Temperate:
+                    return "Temperate";
+                case TerrainBiome.Enum.Arid:
+                    return "Arid";
+                default:
+                    return "Unknown";
+            }
+        }
+
+        #endregion Biome Retrieval
 
         #region Helper Functions
 
