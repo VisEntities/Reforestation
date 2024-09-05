@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.2.0")]
+    [Info("Reforestation", "VisEntities", "1.2.1")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -526,7 +526,7 @@ namespace Oxide.Plugins
 
             public static bool InsideRock(Vector3 position, float radius)
             {
-                List<Collider> colliders = Pool.GetList<Collider>();
+                List<Collider> colliders = Pool.Get<List<Collider>>();
                 Vis.Colliders(position, radius, colliders, LAYER_WORLD, QueryTriggerInteraction.Ignore);
 
                 bool result = false;
@@ -542,13 +542,13 @@ namespace Oxide.Plugins
                     }
                 }
 
-                Pool.FreeList(ref colliders);
+                Pool.FreeUnmanaged(ref colliders);
                 return result;
             }
 
             public static bool HasEntityNearby(Vector3 position, float radius, LayerMask mask, string prefabName = null)
             {
-                List<Collider> hitColliders = Pool.GetList<Collider>();
+                List<Collider> hitColliders = Pool.Get<List<Collider>>();
                 GamePhysics.OverlapSphere(position, radius, hitColliders, mask, QueryTriggerInteraction.Ignore);
 
                 bool hasEntityNearby = false;
@@ -565,7 +565,7 @@ namespace Oxide.Plugins
                     }
                 }
 
-                Pool.FreeList(ref hitColliders);
+                Pool.FreeUnmanaged(ref hitColliders);
                 return hasEntityNearby;
             }
 
