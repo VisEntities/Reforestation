@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.2.1")]
+    [Info("Reforestation", "VisEntities", "1.2.2")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -22,10 +22,9 @@ namespace Oxide.Plugins
         private static Reforestation _plugin;
         private static Configuration _config;
 
-        private const int LAYER_TREE = Layers.Mask.Tree;
-        private const int LAYER_WORLD = Layers.Mask.World;
-        private const int LAYER_TERRAIN = Layers.Mask.Terrain;
-        private const int LAYER_CONSTRUCTION = Layers.Mask.Construction;
+        private const int LAYER_TREES = Layers.Mask.Tree;
+        private const int LAYER_BUILDINGS = Layers.Mask.Construction;
+        private const int LAYER_GROUND = Layers.Mask.Terrain | Layers.Mask.World;
 
         private Dictionary<ulong, Timer> _treePlantingTimers = new Dictionary<ulong, Timer>();
 
@@ -83,12 +82,8 @@ namespace Oxide.Plugins
             {
                 TreeType.TundraPine, new string[]
                 {
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_a.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_b.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_d.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_a.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_c.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_forest/pine_d.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_a.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_b.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_d.prefab",
@@ -195,7 +190,6 @@ namespace Oxide.Plugins
                     "assets/bundled/prefabs/autospawn/resource/v3_arctic_forest/pine_a_snow.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_arctic_forest/pine_c_snow.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_arctic_forestside/pine_a_snow.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_arctic_forestside/pine_b_snow.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_arctic_forestside/pine_d_snow.prefab"
                 }
             },
@@ -225,6 +219,7 @@ namespace Oxide.Plugins
                 }
             }
         };
+       
         public enum TreeType
         {
             Unknown,
@@ -434,9 +429,9 @@ namespace Oxide.Plugins
                 Vector3 candidatePosition = TerrainUtil.GetRandomPositionAround(center, searchRadius, adjustToWaterHeight: false);
 
                 if (!TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
-                    && TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_TERRAIN | LAYER_WORLD)
-                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREE)
-                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_CONSTRUCTION))
+                    && TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_GROUND)
+                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREES)
+                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_BUILDINGS))
                 {
                     position = raycastHit.point;
                     return true;
@@ -527,7 +522,7 @@ namespace Oxide.Plugins
             public static bool InsideRock(Vector3 position, float radius)
             {
                 List<Collider> colliders = Pool.Get<List<Collider>>();
-                Vis.Colliders(position, radius, colliders, LAYER_WORLD, QueryTriggerInteraction.Ignore);
+                Vis.Colliders(position, radius, colliders, Layers.Mask.World, QueryTriggerInteraction.Ignore);
 
                 bool result = false;
 
