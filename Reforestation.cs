@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.2.2")]
+    [Info("Reforestation", "VisEntities", "1.2.3")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -431,7 +431,8 @@ namespace Oxide.Plugins
                 if (!TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
                     && TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_GROUND)
                     && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREES)
-                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_BUILDINGS))
+                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_BUILDINGS)
+                    && !TerrainUtil.InWater(raycastHit.point))
                 {
                     position = raycastHit.point;
                     return true;
@@ -514,6 +515,11 @@ namespace Oxide.Plugins
 
         public static class TerrainUtil
         {
+            public static bool InWater(Vector3 position)
+            {
+                return WaterLevel.Test(position, false, false);
+            }
+
             public static bool OnTopology(Vector3 position, TerrainTopology.Enum mask)
             {
                 return (TerrainMeta.TopologyMap.GetTopology(position) & (int)mask) != 0;
