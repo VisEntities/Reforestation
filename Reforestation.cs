@@ -8,12 +8,11 @@ using Facepunch;
 using Newtonsoft.Json;
 using Rust;
 using System.Collections.Generic;
-using System.Globalization;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.2.3")]
+    [Info("Reforestation", "VisEntities", "1.2.4")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -27,7 +26,6 @@ namespace Oxide.Plugins
         private const int LAYER_GROUND = Layers.Mask.Terrain | Layers.Mask.World;
 
         private Dictionary<ulong, Timer> _treePlantingTimers = new Dictionary<ulong, Timer>();
-
         private static readonly Dictionary<TreeType, string[]> _treePrefabs = new Dictionary<TreeType, string[]>
         {
             {
@@ -92,11 +90,6 @@ namespace Oxide.Plugins
             {
                 TreeType.TundraPineSapling, new string[]
                 {
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_a.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_b.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_c.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_d.prefab",
-                    "assets/bundled/prefabs/autospawn/resource/v3_tundra_field/pine_sapling_e.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_a.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_b.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_tundra_field_pines/pine_sapling_c.prefab",
@@ -426,7 +419,7 @@ namespace Oxide.Plugins
 
             for (int attempt = 0; attempt < maximumAttempts; attempt++)
             {
-                Vector3 candidatePosition = TerrainUtil.GetRandomPositionAround(center, searchRadius, adjustToWaterHeight: false);
+                Vector3 candidatePosition = TerrainUtil.GetRandomPositionAround(center, 0f, searchRadius, adjustToWaterHeight: false);
 
                 if (!TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
                     && TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_GROUND)
@@ -515,36 +508,14 @@ namespace Oxide.Plugins
 
         public static class TerrainUtil
         {
+            public static bool OnTopology(Vector3 position, TerrainTopology.Enum topology)
+            {
+                return (TerrainMeta.TopologyMap.GetTopology(position) & (int)topology) != 0;
+            }
+
             public static bool InWater(Vector3 position)
             {
                 return WaterLevel.Test(position, false, false);
-            }
-
-            public static bool OnTopology(Vector3 position, TerrainTopology.Enum mask)
-            {
-                return (TerrainMeta.TopologyMap.GetTopology(position) & (int)mask) != 0;
-            }
-
-            public static bool InsideRock(Vector3 position, float radius)
-            {
-                List<Collider> colliders = Pool.Get<List<Collider>>();
-                Vis.Colliders(position, radius, colliders, Layers.Mask.World, QueryTriggerInteraction.Ignore);
-
-                bool result = false;
-
-                foreach (Collider collider in colliders)
-                {
-                    if (collider.name.Contains("rock", CompareOptions.OrdinalIgnoreCase)
-                        || collider.name.Contains("cliff", CompareOptions.OrdinalIgnoreCase)
-                        || collider.name.Contains("formation", CompareOptions.OrdinalIgnoreCase))
-                    {
-                        result = true;
-                        break;
-                    }
-                }
-
-                Pool.FreeUnmanaged(ref colliders);
-                return result;
             }
 
             public static bool HasEntityNearby(Vector3 position, float radius, LayerMask mask, string prefabName = null)
@@ -570,10 +541,10 @@ namespace Oxide.Plugins
                 return hasEntityNearby;
             }
 
-            public static Vector3 GetRandomPositionAround(Vector3 center, float radius, bool adjustToWaterHeight = false)
+            public static Vector3 GetRandomPositionAround(Vector3 center, float minimumRadius, float maximumRadius, bool adjustToWaterHeight = false)
             {
                 Vector3 randomDirection = Random.onUnitSphere;
-                float randomDistance = Random.Range(0, radius);
+                float randomDistance = Random.Range(minimumRadius, maximumRadius);
                 Vector3 randomPosition = center + randomDirection * randomDistance;
 
                 if (adjustToWaterHeight)
