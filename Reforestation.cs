@@ -8,11 +8,12 @@ using Facepunch;
 using Newtonsoft.Json;
 using Rust;
 using System.Collections.Generic;
+using System.Globalization;
 using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.2.4")]
+    [Info("Reforestation", "VisEntities", "1.3.0")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -22,10 +23,10 @@ namespace Oxide.Plugins
         private static Configuration _config;
 
         private const int LAYER_TREES = Layers.Mask.Tree;
-        private const int LAYER_BUILDINGS = Layers.Mask.Construction;
         private const int LAYER_GROUND = Layers.Mask.Terrain | Layers.Mask.World;
+        private const int LAYER_BUILDINGS = Layers.Mask.Construction | Layers.Mask.Deployed;
 
-        private Dictionary<ulong, Timer> _treePlantingTimers = new Dictionary<ulong, Timer>();
+        private Dictionary<ulong, Timer> _treeRespawnTimers = new Dictionary<ulong, Timer>();
         private static readonly Dictionary<TreeType, string[]> _treePrefabs = new Dictionary<TreeType, string[]>
         {
             {
@@ -212,31 +213,7 @@ namespace Oxide.Plugins
                 }
             }
         };
-       
-        public enum TreeType
-        {
-            Unknown,
-            TundraBirchBig,
-            TundraBirchLarge,
-            TundraBirchMedium,
-            TundraBirchSmall,
-            TundraBirchTiny,
-            TundraPineDead,
-            TundraPine,
-            TundraPineSapling,
-            TundraDouglasFir,
-            TempAmericanBeech,
-            TempBirch,
-            TempPine,
-            TempOak,
-            AridPalm,
-            Swamp,
-            ArcticDouglasFir,
-            ArcticPine,
-            ArcticPineDead,
-            ArcticPineSapling
-        }
-        
+               
         #endregion Fields
 
         #region Configuration
@@ -257,9 +234,12 @@ namespace Oxide.Plugins
 
             [JsonProperty("Chance To Plant Each Tree")]
             public int ChanceToPlantEachTree { get; set; }
-            
-            [JsonProperty("Search Radius For Planting Site")]
-            public float SearchRadiusForPlantingSite { get; set; }
+
+            [JsonProperty("Minimum Search Radius For Planting Site")]
+            public float MinimumSearchRadiusForPlantingSite { get; set; }
+
+            [JsonProperty("Maximum Search Radius For Planting Site")]
+            public float MaximumSearchRadiusForPlantingSite { get; set; }
 
             [JsonProperty("Maximum Search Attempts For Planting Site")]
             public int MaximumSearchAttemptsForPlantingSite { get; set; }
@@ -314,6 +294,12 @@ namespace Oxide.Plugins
                 _config.ExcludedBiomes = defaultConfig.ExcludedBiomes;
             }
 
+            if (string.Compare(_config.Version, "1.3.0") < 0)
+            {
+                _config.MinimumSearchRadiusForPlantingSite = defaultConfig.MinimumSearchRadiusForPlantingSite;
+                _config.MaximumSearchRadiusForPlantingSite = defaultConfig.MaximumSearchRadiusForPlantingSite;
+            }
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -327,7 +313,8 @@ namespace Oxide.Plugins
                 MinimumNumberOfTreesToPlant = 1,
                 MaximumNumberOfTreesToPlant = 3,
                 ChanceToPlantEachTree = 50,
-                SearchRadiusForPlantingSite = 15f,
+                MinimumSearchRadiusForPlantingSite = 5f,
+                MaximumSearchRadiusForPlantingSite = 30f,
                 MaximumSearchAttemptsForPlantingSite = 10,
                 AllowableDistanceFromNearbyTrees = 2f,
                 BuildingCheckRadius = 5f,
@@ -349,13 +336,13 @@ namespace Oxide.Plugins
 
         private void Unload()
         {
-            foreach (var timer in _treePlantingTimers.Values)
+            foreach (var timer in _treeRespawnTimers.Values)
             {
                 if (timer != null)
                     timer.Destroy();
             }
+            _treeRespawnTimers.Clear();
 
-            _treePlantingTimers.Clear();
             _config = null;
             _plugin = null;
         }
@@ -366,7 +353,7 @@ namespace Oxide.Plugins
                 return;
 
             TreeEntity tree = dispenser.GetComponentInParent<TreeEntity>();
-            if (tree != null)
+            if (tree != null && !_treeRespawnTimers.ContainsKey(tree.net.ID.Value))
             {
                 ScheduleTreeReplanting(tree);
             }
@@ -374,13 +361,13 @@ namespace Oxide.Plugins
 
         #endregion Oxide Hooks
 
-        #region Tree Replanting
+        #region Tree Planting
 
         private void ScheduleTreeReplanting(TreeEntity tree)
         {
+            ulong treeId = tree.net.ID.Value;
             Vector3 treePosition = tree.transform.position;
             TreeType treeType = GetTreeType(tree.PrefabName);
-            ulong treeId = tree.net.ID.Value;
 
             if (treeType == TreeType.Unknown)
                 return;
@@ -398,7 +385,8 @@ namespace Oxide.Plugins
                     if (!ChanceSucceeded(_config.ChanceToPlantEachTree))
                         continue;
 
-                    if (TryFindSuitablePlantingSite(treePosition, _config.SearchRadiusForPlantingSite, out Vector3 position, out Quaternion rotation, _config.MaximumSearchAttemptsForPlantingSite))
+                    if (TryFindSuitablePlantingSite(treePosition, _config.MinimumSearchRadiusForPlantingSite, _config.MaximumSearchRadiusForPlantingSite,
+                        out Vector3 position, out Quaternion rotation, _config.MaximumSearchAttemptsForPlantingSite))
                     {
                         string treePrefab = GetRandomTreePrefabOfType(treeType);
                         if (treePrefab != null)
@@ -407,22 +395,24 @@ namespace Oxide.Plugins
                         }
                     }
                 }
+
+                _treeRespawnTimers.Remove(treeId);
             });
 
-            _treePlantingTimers[treeId] = spawnIn;
+            _treeRespawnTimers[treeId] = spawnIn;
         }
         
-        public bool TryFindSuitablePlantingSite(Vector3 center, float searchRadius, out Vector3 position, out Quaternion rotation, int maximumAttempts)
+        public bool TryFindSuitablePlantingSite(Vector3 center, float minSearchRadius, float maxSearchRadius, out Vector3 position, out Quaternion rotation, int maximumAttempts)
         {
             position = Vector3.zero;
             rotation = Quaternion.identity;
 
             for (int attempt = 0; attempt < maximumAttempts; attempt++)
             {
-                Vector3 candidatePosition = TerrainUtil.GetRandomPositionAround(center, 0f, searchRadius, adjustToWaterHeight: false);
+                Vector3 candidatePosition = TerrainUtil.GetRandomPositionAround(center, minSearchRadius, maxSearchRadius);
 
-                if (!TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
-                    && TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_GROUND)
+                if (TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_GROUND)
+                    && !TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
                     && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREES)
                     && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_BUILDINGS)
                     && !TerrainUtil.InWater(raycastHit.point))
@@ -445,7 +435,7 @@ namespace Oxide.Plugins
             return tree;
         }
 
-        #endregion Tree Replanting
+        #endregion Tree Planting
 
         #region Tree Type Identification and Prefab Selection
 
@@ -495,11 +485,39 @@ namespace Oxide.Plugins
 
         #endregion Biome Retrieval
 
+        #region Enums
+
+        public enum TreeType
+        {
+            Unknown,
+            TundraBirchBig,
+            TundraBirchLarge,
+            TundraBirchMedium,
+            TundraBirchSmall,
+            TundraBirchTiny,
+            TundraPineDead,
+            TundraPine,
+            TundraPineSapling,
+            TundraDouglasFir,
+            TempAmericanBeech,
+            TempBirch,
+            TempPine,
+            TempOak,
+            AridPalm,
+            Swamp,
+            ArcticDouglasFir,
+            ArcticPine,
+            ArcticPineDead,
+            ArcticPineSapling
+        }
+
+        #endregion Enums
+
         #region Helper Functions
 
-        private bool ChanceSucceeded(int chance)
+        private bool ChanceSucceeded(int percentage)
         {
-            return Random.Range(0, 100) < chance;
+            return Random.Range(0, 100) < percentage;
         }
 
         #endregion Helper Functions
@@ -516,6 +534,28 @@ namespace Oxide.Plugins
             public static bool InWater(Vector3 position)
             {
                 return WaterLevel.Test(position, false, false);
+            }
+
+            public static bool InsideRock(Vector3 position, float radius)
+            {
+                List<Collider> colliders = Pool.Get<List<Collider>>();
+                Vis.Colliders(position, radius, colliders, Layers.Mask.World, QueryTriggerInteraction.Ignore);
+
+                bool result = false;
+
+                foreach (Collider collider in colliders)
+                {
+                    if (collider.name.Contains("rock", CompareOptions.OrdinalIgnoreCase)
+                        || collider.name.Contains("cliff", CompareOptions.OrdinalIgnoreCase)
+                        || collider.name.Contains("formation", CompareOptions.OrdinalIgnoreCase))
+                    {
+                        result = true;
+                        break;
+                    }
+                }
+
+                Pool.FreeUnmanaged(ref colliders);
+                return result;
             }
 
             public static bool HasEntityNearby(Vector3 position, float radius, LayerMask mask, string prefabName = null)
@@ -541,16 +581,12 @@ namespace Oxide.Plugins
                 return hasEntityNearby;
             }
 
-            public static Vector3 GetRandomPositionAround(Vector3 center, float minimumRadius, float maximumRadius, bool adjustToWaterHeight = false)
+            public static Vector3 GetRandomPositionAround(Vector3 center, float minimumRadius, float maximumRadius)
             {
                 Vector3 randomDirection = Random.onUnitSphere;
+                randomDirection.y = 0;
                 float randomDistance = Random.Range(minimumRadius, maximumRadius);
                 Vector3 randomPosition = center + randomDirection * randomDistance;
-
-                if (adjustToWaterHeight)
-                    randomPosition.y = TerrainMeta.WaterMap.GetHeight(randomPosition);
-                else
-                    randomPosition.y = TerrainMeta.HeightMap.GetHeight(randomPosition);
 
                 return randomPosition;
             }
