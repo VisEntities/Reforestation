@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.3.0")]
+    [Info("Reforestation", "VisEntities", "1.4.0")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -252,6 +252,9 @@ namespace Oxide.Plugins
 
             [JsonProperty("Excluded Biomes")]
             public List<string> ExcludedBiomes { get; set; }
+
+            [JsonProperty("Excluded Tree Prefabs")]
+            public List<string> ExcludedTreePrefabs { get; set; }
         }
 
         protected override void LoadConfig()
@@ -300,6 +303,11 @@ namespace Oxide.Plugins
                 _config.MaximumSearchRadiusForPlantingSite = defaultConfig.MaximumSearchRadiusForPlantingSite;
             }
 
+            if (string.Compare(_config.Version, "1.4.0") < 0)
+            {
+                _config.ExcludedTreePrefabs = defaultConfig.ExcludedTreePrefabs;
+            }
+
             PrintWarning("Config update complete! Updated from version " + _config.Version + " to " + Version.ToString());
             _config.Version = Version.ToString();
         }
@@ -321,6 +329,11 @@ namespace Oxide.Plugins
                 ExcludedBiomes = new List<string>
                 {
                     "Arid"
+                },
+                ExcludedTreePrefabs = new List<string>
+                {
+                    "assets/bundled/prefabs/autospawn/resource/v3_arid_forest/palm_tree_tall_a_entity.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_arid_forest/palm_tree_tall_b_entity.prefab"
                 }
             };
         }
@@ -353,7 +366,7 @@ namespace Oxide.Plugins
                 return;
 
             TreeEntity tree = dispenser.GetComponentInParent<TreeEntity>();
-            if (tree != null && !_treeRespawnTimers.ContainsKey(tree.net.ID.Value))
+            if (tree != null && !_treeRespawnTimers.ContainsKey(tree.net.ID.Value) && !_config.ExcludedTreePrefabs.Contains(tree.PrefabName))
             {
                 ScheduleTreeReplanting(tree);
             }
@@ -401,7 +414,7 @@ namespace Oxide.Plugins
 
             _treeRespawnTimers[treeId] = spawnIn;
         }
-        
+
         public bool TryFindSuitablePlantingSite(Vector3 center, float minSearchRadius, float maxSearchRadius, out Vector3 position, out Quaternion rotation, int maximumAttempts)
         {
             position = Vector3.zero;
@@ -531,6 +544,14 @@ namespace Oxide.Plugins
                 return (TerrainMeta.TopologyMap.GetTopology(position) & (int)topology) != 0;
             }
 
+            public static bool OnRoadOrRail(Vector3 position)
+            {
+                var combinedTopology = TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside |
+                                   TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside;
+
+                return OnTopology(position, combinedTopology);
+            }
+
             public static bool InWater(Vector3 position)
             {
                 return WaterLevel.Test(position, false, false);
@@ -581,12 +602,12 @@ namespace Oxide.Plugins
                 return hasEntityNearby;
             }
 
-            public static Vector3 GetRandomPositionAround(Vector3 center, float minimumRadius, float maximumRadius)
+            public static Vector3 GetRandomPositionAround(Vector3 centerPosition, float minimumRadius, float maximumRadius)
             {
                 Vector3 randomDirection = Random.onUnitSphere;
                 randomDirection.y = 0;
                 float randomDistance = Random.Range(minimumRadius, maximumRadius);
-                Vector3 randomPosition = center + randomDirection * randomDistance;
+                Vector3 randomPosition = centerPosition + randomDirection * randomDistance;
 
                 return randomPosition;
             }
