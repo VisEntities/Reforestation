@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.4.0")]
+    [Info("Reforestation", "VisEntities", "1.4.1")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -24,7 +24,7 @@ namespace Oxide.Plugins
 
         private const int LAYER_TREES = Layers.Mask.Tree;
         private const int LAYER_GROUND = Layers.Mask.Terrain | Layers.Mask.World;
-        private const int LAYER_BUILDINGS = Layers.Mask.Construction | Layers.Mask.Deployed;
+        private const int LAYER_ENTITIES = Layers.Mask.Construction | Layers.Mask.Deployed;
 
         private Dictionary<ulong, Timer> _treeRespawnTimers = new Dictionary<ulong, Timer>();
         private static readonly Dictionary<TreeType, string[]> _treePrefabs = new Dictionary<TreeType, string[]>
@@ -425,9 +425,10 @@ namespace Oxide.Plugins
                 Vector3 candidatePosition = TerrainUtil.GetRandomPositionAround(center, minSearchRadius, maxSearchRadius);
 
                 if (TerrainUtil.GetGroundInfo(candidatePosition, out RaycastHit raycastHit, 5f, LAYER_GROUND)
-                    && !TerrainUtil.OnTopology(center, TerrainTopology.Enum.Road | TerrainTopology.Enum.Roadside | TerrainTopology.Enum.Rail | TerrainTopology.Enum.Railside)
+                    && !TerrainUtil.OnRoadOrRail(center)
+                    && !TerrainUtil.InsideRock(center, 2.0f)
                     && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.AllowableDistanceFromNearbyTrees, LAYER_TREES)
-                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_BUILDINGS)
+                    && !TerrainUtil.HasEntityNearby(raycastHit.point, _config.BuildingCheckRadius, LAYER_ENTITIES)
                     && !TerrainUtil.InWater(raycastHit.point))
                 {
                     position = raycastHit.point;
@@ -528,9 +529,16 @@ namespace Oxide.Plugins
 
         #region Helper Functions
 
-        private bool ChanceSucceeded(int percentage)
+        private static bool ChanceSucceeded(int percent)
         {
-            return Random.Range(0, 100) < percentage;
+            if (percent <= 0)
+                return false;
+
+            if (percent >= 100)
+                return true;
+
+            float roll = Random.Range(0f, 100f);
+            return roll < percent;
         }
 
         #endregion Helper Functions
