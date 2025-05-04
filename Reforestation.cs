@@ -13,7 +13,7 @@ using UnityEngine;
 
 namespace Oxide.Plugins
 {
-    [Info("Reforestation", "VisEntities", "1.4.1")]
+    [Info("Reforestation", "VisEntities", "1.5.0")]
     [Description("Keeps forests dense by replanting trees after they are cut down.")]
     public class Reforestation : RustPlugin
     {
@@ -211,7 +211,41 @@ namespace Oxide.Plugins
                     "assets/bundled/prefabs/autospawn/resource/v3_arctic_forestside/pine_sapling_d_snow.prefab",
                     "assets/bundled/prefabs/autospawn/resource/v3_arctic_forestside/pine_sapling_e_snow.prefab"
                 }
-            }
+            },
+            {
+                TreeType.JungleKapok, new []
+                {
+                    "assets/bundled/prefabs/autospawn/resource/vine_swinging/vineswingingtreeprefab.prefab"
+                }
+            },
+            {
+                TreeType.JungleTrumpet, new []
+                {
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/trumpet_tree_a.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/trumpet_tree_b.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/trumpet_tree_c.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/trumpet_tree_d.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest_saplings/trumpet_tree_sapling_d.prefab"
+                }
+            },
+            {
+                TreeType.JungleHura, new []
+                {
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/hura_crepitans_a.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/hura_crepitans_b.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/hura_crepitans_d.prefab"
+                }
+            },
+            {
+                TreeType.JungleMauritia, new []
+                {
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/mauritia_flexuosa_xs.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/mauritia_flexuosa_s.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/mauritia_flexuosa_m.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest/mauritia_flexuosa_l.prefab",
+                    "assets/bundled/prefabs/autospawn/resource/v3_jungle_forest_saplings/mauritia_flexuosa_sapling.prefab"
+                }
+            },
         };
                
         #endregion Fields
@@ -522,7 +556,11 @@ namespace Oxide.Plugins
             ArcticDouglasFir,
             ArcticPine,
             ArcticPineDead,
-            ArcticPineSapling
+            ArcticPineSapling,
+            JungleKapok,
+            JungleTrumpet,
+            JungleHura,
+            JungleMauritia,
         }
 
         #endregion Enums
@@ -610,12 +648,18 @@ namespace Oxide.Plugins
                 return hasEntityNearby;
             }
 
-            public static Vector3 GetRandomPositionAround(Vector3 centerPosition, float minimumRadius, float maximumRadius)
+            public static Vector3 GetRandomPositionAround(Vector3 position, float minimumRadius, float maximumRadius, bool adjustToWaterHeight = false, bool adjustToTerrainHeight = false)
             {
-                Vector3 randomDirection = Random.onUnitSphere;
-                randomDirection.y = 0;
+                Vector3 randomDirection = Random.insideUnitSphere.normalized;
+
                 float randomDistance = Random.Range(minimumRadius, maximumRadius);
-                Vector3 randomPosition = centerPosition + randomDirection * randomDistance;
+
+                Vector3 randomPosition = position + randomDirection * randomDistance;
+
+                if (adjustToWaterHeight)
+                    randomPosition.y = TerrainMeta.WaterMap.GetHeight(randomPosition);
+                else if (adjustToTerrainHeight)
+                    randomPosition.y = TerrainMeta.HeightMap.GetHeight(randomPosition);
 
                 return randomPosition;
             }
